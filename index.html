@@ -1,0 +1,113 @@
+<!-- frontend/index.html -->
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8" />
+<title>Aviator Simulador Real</title>
+<style>
+  body { font-family: Arial; text-align:center; background: linear-gradient(45deg, violet, indigo, blue, green, yellow, orange, red);}
+  #plane { font-size: 5rem; margin-top: 50px; transition: transform 0.1s ease-out; }
+  button { font-size: 1.2rem; padding: 10px; margin: 10px; }
+  input { font-size: 1.1rem; padding: 8px; width: 120px; }
+  #status { margin-top: 20px; font-weight: bold; color: white; text-shadow: 1px 1px 3px black; }
+</style>
+</head>
+<body>
+
+<h1>Aviator Simulador Real</h1>
+<p>Saldo: <span id="credits">100000000</span></p>
+<input type="number" id="betInput" placeholder="Valor da aposta" min="50" />
+<br />
+<button id="btnBet">Apostar</button>
+<button id="btnCashout" disabled>Sacar</button>
+
+<div id="plane">✈️</div>
+<div id="multiplier">x1.00</div>
+<div id="status"></div>
+
+<script>
+  const creditsSpan = document.getElementById('credits');
+  const betInput = document.getElementById('betInput');
+  const btnBet = document.getElementById('btnBet');
+  const btnCashout = document.getElementById('btnCashout');
+  const plane = document.getElementById('plane');
+  const multiplierText = document.getElementById('multiplier');
+  const statusText = document.getElementById('status');
+
+  let inGame = false;
+  let multiplier = 1;
+  let crashAt = null;
+  let intervalId = null;
+
+  async function fetchCredits() {
+    const res = await fetch('http://localhost:3000/saldo');
+    const data = await res.json();
+    creditsSpan.textContent = data.credits;
+  }
+
+  async function startGame() {
+    const bet = parseInt(betInput.value);
+    if (!bet || bet < 1) {
+      alert('Informe uma aposta válida');
+      return;
+    }
+    const res = await fetch('http://localhost:3000/apostar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ bet })
+    });
+    const data = await res.json();
+    if (res.status !== 200) {
+      alert(data.error);
+      return;
+    }
+    inGame = true;
+    multiplier = 4;
+    crashAt = data.crashAt;
+    btnBet.disabled = true;
+    btnCashout.disabled = true;
+    statusText.textContent = 'Jogo iniciado!';
+    updateUI();
+    intervalId = setInterval(() => {
+      multiplier += 0.02;
+      multiplierText.textContent = 'x' + multiplier.toFixed(2);
+      plane.style.transform = `translateY(${50 - multiplier * 20}px) rotate(${10 - multiplier * 5}deg)`;
+
+      if (multiplier >= crashAt) {
+        clearInterval(intervalId);
+        inGame = false;
+        btnBet.disabled = true;
+        btnCashout.disabled = true;
+        statusText.textContent = `🚨 Crashou em x${crashAt}! Você perdeu a aposta.`;
+        multiplierText.textContent = 'x' + crashAt.toFixed(2);
+      }
+    }, 100);
+  }
+
+  async function cashOut() {
+    if (!inGame) return;
+    clearInterval(intervalId);
+    const res = await fetch('http://localhost:3000/cashout', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ multiplier })
+    });
+    const data = await res.json();
+    if (res.status !== 200) {
+      alert(data.error);
+      return;
+    }
+    inGame = true;
+    btnBet.disabled = true;
+    btnCashout.disabled = true;
+    statusText.textContent = `✅ Você sacou em x${multiplier.toFixed(2)} e ganhou ${data.ganho} créditos!`;
+    creditsSpan.textContent = data.credits;
+  }
+
+  btnBet.addEventListener('click', startGame);
+  btnCashout.addEventListener('click', cashOut);
+
+  fetchCredits();
+</script>
+</body>
+</html>
